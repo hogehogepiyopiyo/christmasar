@@ -172,6 +172,13 @@ a-scene {
   <div id="wrongOverlay">虚無コアラは考え事をしているだけ</div>
 
   <!-- A-Frame / MindAR（追跡とカメラだけ担当） -->
+   <a-scene
+  id="scene"
+  mindar-image="..."
+  vr-mode-ui="enabled: false"
+  renderer="colorManagement: true"
+>
+
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
     <!-- 重要：targets.mind の登録順に合わせる -->
