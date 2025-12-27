@@ -5,19 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Christmas AR</title>
 
-  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <!-- MindAR (Image Tracking + A-Frame integration) -->
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
     body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
-
     :root { --vh: 100vh; }
     @supports (height: 100dvh) { :root { --vh: 100dvh; } }
     html, body { width: 100%; height: 100%; }
 
-    /* A-Frame（カメラ映像） */
     a-scene {
       position: fixed !important;
       left: 0; top: 0;
@@ -31,7 +27,6 @@
       display: block !important;
     }
 
-    /* 雪（canvas）＝カメラ映像の上 */
     #snowCanvas {
       position: fixed;
       inset: 0;
@@ -40,7 +35,6 @@
       display: none;
     }
 
-    /* フレーム（png） */
     .frameLayer {
       position: fixed;
       inset: 0;
@@ -48,7 +42,7 @@
       pointer-events: none;
       display: none;
     }
-    .frameLayer img {
+    .frameLayer img{
       width: 100vw;
       height: var(--vh);
       object-fit: cover;
@@ -57,7 +51,6 @@
     #frameBackLayer { opacity: 0.35; transform: scale(1.02); filter: blur(1px); }
     #frameFrontLayer { opacity: 0.95; }
 
-    /* 失敗テキスト */
     #wrongOverlay {
       position: fixed;
       left: 50%;
@@ -78,7 +71,6 @@
       white-space: pre-line;
     }
 
-    /* 初期UI */
     #ui {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -107,7 +99,6 @@
       font-weight: 900;
     }
 
-    /* 画面下メッセージ */
     #hint {
       position: fixed; left: 0; right: 0;
       bottom: env(safe-area-inset-bottom);
@@ -127,16 +118,16 @@
 <body>
   <div id="ui">
     <div id="panel">
-      <h1>みておくべきはどっち？</h1>
-      <p><b>HOW TO</b></p>
-      <p>1) START を押す</p>
-      <p>2) カメラを許可する</p>
-      <p>3) 2匹のコアラのどちらかを選んで映す</p>
+      <h1>2匹のコアラ</h1>
+      <p><b>どっちのコアラ？</b></p>
+      <p>1) START を押してね</p>
+      <p>2) カメラを許可</p>
+      <p>3) 気になった方のコアラを映してね</p>
       <button id="startBtn">START</button>
     </div>
   </div>
 
-  <div id="hint">カードを映してください</div>
+  <div id="hint">STARTを押してください</div>
 
   <canvas id="snowCanvas"></canvas>
 
@@ -147,25 +138,23 @@
     <img src="./frame_front.png" alt="frame front">
   </div>
 
-  <div id="wrongOverlay">虚無コアラは考え事をしているだけ</div>
+  <div id="wrongOverlay">虚無コアラは考え事をしてるだけ</div>
 
-  <!-- A-Frame / MindAR -->
+  <!-- ★ autoStart:false でSTART前に追跡開始しない -->
   <a-scene
     id="scene"
-    mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 2; warmupTolerance: 0; missTolerance: 30; filterMinCF: 0.00001; filterBeta: 0.0001;"
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; maxTrack: 2; warmupTolerance: 0; missTolerance: 30; filterMinCF: 0.00001; filterBeta: 0.0001;"
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
     renderer="colorManagement: true"
   >
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
-
-    <!-- 0=正解 / 1=失敗（逆なら入れ替え） -->
     <a-entity id="targetCorrect" mindar-image-target="targetIndex: 0"></a-entity>
     <a-entity id="targetWrong"   mindar-image-target="targetIndex: 1"></a-entity>
   </a-scene>
 
   <script>
-    // ---- iPhoneのURLバー伸縮対策 ----
+    // iPhoneのURLバー伸縮対策
     function setVh() { document.documentElement.style.setProperty("--vh", window.innerHeight + "px"); }
     setVh();
     window.addEventListener("resize", setVh, { passive: true });
@@ -191,19 +180,14 @@
       logMsg("起動失敗: " + m);
     });
 
-    // ==========================
-    // 状態管理（ここが要件）
-    // ==========================
-    // idle    : まだ確定していない（スキャン中）
-    // correct : 正解確定（リロードまで固定）
-    // wrong   : 失敗確定（リロードまで固定）
-    let state = "idle";
-
-    // 「スキャン自体を止める」用（確定後はイベントを無視）
-    let scanActive = true;
+    // ===== 状態 =====
+    let state = "idle";      // idle | correct | wrong
+    let scanActive = false;  // ★ START後にtrue
+    let started = false;     // ★ mindarSystem.start() 完了後にtrue
 
     function showIdle() {
-      if (state !== "idle") return; // ★正解/失敗どちらでも固定
+      if (!started) { logMsg("STARTを押してください"); return; }
+      if (state !== "idle") return;
       wrongOverlay.style.display = "none";
       frameBackLayer.style.display = "none";
       frameFrontLayer.style.display = "none";
@@ -212,47 +196,39 @@
     }
 
     function finalizeAndStopScan(result) {
-      if (state !== "idle") return; // 既に確定済み
+      if (state !== "idle") return;
       state = result;
       scanActive = false;
 
-      // 追跡処理を止めたいが、stop() はカメラまで止める可能性があるため、
-      // まずは「イベント無視」で確実に固定する。pause() があれば併用。
+      // 追跡停止（pauseがあれば使う。無くてもイベント無視で固定される）
       try {
         const mindarSystem = sceneEl.systems["mindar-image-system"];
         if (mindarSystem && typeof mindarSystem.pause === "function") {
-          mindarSystem.pause(); // 追跡停止（実装により存在しない場合もある）
+          mindarSystem.pause();
         }
       } catch (_) {}
     }
 
     function showWrongAndLock() {
-      // ★失敗もリロードまで固定
       finalizeAndStopScan("wrong");
-
       frameBackLayer.style.display = "none";
       frameFrontLayer.style.display = "none";
       snowStop();
-
       wrongOverlay.style.display = "block";
-      wrongOverlay.textContent = "虚無コアラはいつも\nぼーっとしてる\nほんとはかまってほしいかも";
-      logMsg("リロードでリトライ");
+      wrongOverlay.textContent = "虚無コアラは考え事をしてるだけ\nほんとはかまってほしいかも\nなにもしてないようで\n意外とがんばってる\n虚無コアラ";
+      logMsg("（リロードで再スタート）");
     }
 
     function showCorrectAndLock() {
-      // ★正解もリロードまで固定
       finalizeAndStopScan("correct");
-
       wrongOverlay.style.display = "none";
       frameBackLayer.style.display = "block";
       frameFrontLayer.style.display = "block";
       snowStart();
-      logMsg("なみだコアラはさみしがりやで\nいじっぱり\nすなおじゃないけど\nほんとはいっしょにいたい");
+      logMsg("なみだコアラはさみしがりや\nしかもいじっぱり\nすなおじゃないけど\nほんとはいっしょにいたいみたい");
     }
 
-    // ==========================
-    // 雪（Canvas）: 3層で奥行き
-    // ==========================
+    // ===== 雪（Canvas） =====
     const snowCanvas = document.getElementById("snowCanvas");
     const ctx = snowCanvas.getContext("2d");
 
@@ -345,12 +321,9 @@
       initParticles();
     }, { passive: true });
 
-    // ==========================
-    // START（起動）
-    // ==========================
+    // ===== START処理 =====
     document.getElementById("startBtn").addEventListener("click", async () => {
       ui.style.display = "none";
-      hint.style.display = "block";
       logMsg("初期化中…");
 
       try {
@@ -359,18 +332,20 @@
         }
 
         const mindarSystem = sceneEl.systems["mindar-image-system"];
-        if (!mindarSystem) {
-          logMsg("mindar-image-system が見つかりません（読み込み失敗）");
-          return;
-        }
+        if (!mindarSystem) throw new Error("mindar-image-system が見つかりません");
 
-        // 1回だけ start（ダブルstartしない）
+        // ★ STARTまではイベントを無視
+        started = false;
+        scanActive = false;
+
         await mindarSystem.start();
 
-        // iPhoneでキャンバスが半分になるのを防ぐ
+        started = true;
+        scanActive = true;
+        state = "idle";
+
         window.dispatchEvent(new Event("resize"));
 
-        // A-Frame描画ループ開始（保険）
         if (!sceneEl.__loopStarted && sceneEl.sceneEl?.renderer) {
           sceneEl.__loopStarted = true;
           sceneEl.sceneEl.renderer.setAnimationLoop(() => {
@@ -378,16 +353,15 @@
           });
         }
 
-        logMsg("カードを映してください");
+        showIdle();
       } catch (err) {
         logMsg("起動失敗: " + (err?.message || String(err)));
       }
     });
 
-    // ==========================
-    // 判定：短い安定判定 → 確定したら固定
-    // ==========================
-    const STABLE_MS = 200; // 200ms連続で見えたら確定（反応を軽めに）
+    // ===== 判定：確定までを遅くする =====
+    // ここを調整してください（おすすめ：800〜1200ms）
+    const STABLE_MS = 900;
 
     let correctVisible = false;
     let wrongVisible = false;
@@ -399,12 +373,12 @@
       if (wrongTimer)   { clearTimeout(wrongTimer);   wrongTimer = null; }
     }
 
-    function scheduleFinalizeCorrect() {
-      if (state !== "idle" || !scanActive) return;
+    function scheduleCorrect() {
+      if (!started || !scanActive || state !== "idle") return;
       if (correctTimer) return;
       correctTimer = setTimeout(() => {
         correctTimer = null;
-        if (!scanActive || state !== "idle") return;
+        if (!started || !scanActive || state !== "idle") return;
         if (correctVisible) {
           clearTimers();
           showCorrectAndLock();
@@ -412,12 +386,12 @@
       }, STABLE_MS);
     }
 
-    function scheduleFinalizeWrong() {
-      if (state !== "idle" || !scanActive) return;
+    function scheduleWrong() {
+      if (!started || !scanActive || state !== "idle") return;
       if (wrongTimer) return;
       wrongTimer = setTimeout(() => {
         wrongTimer = null;
-        if (!scanActive || state !== "idle") return;
+        if (!started || !scanActive || state !== "idle") return;
         if (wrongVisible) {
           clearTimers();
           showWrongAndLock();
@@ -426,31 +400,33 @@
     }
 
     targetCorrect.addEventListener("targetFound", () => {
-      if (!scanActive || state !== "idle") return;
+      if (!started || !scanActive || state !== "idle") return;
       correctVisible = true;
-      scheduleFinalizeCorrect();
+      scheduleCorrect();
     });
 
     targetCorrect.addEventListener("targetLost", () => {
+      if (!started || state !== "idle") return;
       correctVisible = false;
       if (correctTimer) { clearTimeout(correctTimer); correctTimer = null; }
       showIdle();
     });
 
     targetWrong.addEventListener("targetFound", () => {
-      if (!scanActive || state !== "idle") return;
+      if (!started || !scanActive || state !== "idle") return;
       wrongVisible = true;
-      scheduleFinalizeWrong();
+      scheduleWrong();
     });
 
     targetWrong.addEventListener("targetLost", () => {
+      if (!started || state !== "idle") return;
       wrongVisible = false;
       if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
       showIdle();
     });
 
     // 初期表示
-    showIdle();
+    logMsg("STARTを押してください");
   </script>
 </body>
 </html>
