@@ -51,6 +51,8 @@
       pointer-events: none;
       z-index: 5;
       display: none;
+        white-space: pre-line; /* ←これを追加 */
+
     }
   </style>
 </head>
@@ -111,7 +113,7 @@
                  material="color: #000; opacity: 0.35; transparent: true"
                  radius="0.03">
         </a-plane>
-        <a-text value="虚無コアラは考え事をしているだけ"
+        <a-text value="虚無コアラは考え事をしているだけ\nもしかしたらかまってほしかも"
                 position="0 -0.15 -1.38"
                 align="center"
                 width="2.6"
@@ -162,12 +164,12 @@
       hint.textContent = "別のカードも試してみて";
     }
 
-    function showCorrect() {
-      hudWrong.setAttribute("visible", false);
-      hudCorrect.setAttribute("visible", true);
-      state = "correct";
-      hint.textContent = "なみだコアラはさみしがりや<br>すなおじゃないから<br>こっそりないてる";
-    }
+function showCorrect() {
+  hudWrong.setAttribute("visible", false);
+  hudCorrect.setAttribute("visible", true);
+  state = "correct";
+  hint.textContent = "なみだコアラはさみしがりや\nすなおじゃないから\nこっそりないてる\nほんとはもっといっしょにいたい";
+}
 
     // START押してからカメラ開始
     document.getElementById("startBtn").addEventListener("click", async () => {
