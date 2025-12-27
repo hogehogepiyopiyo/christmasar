@@ -13,11 +13,27 @@
   <style>
     body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
 
+    /* iPhone SafariのURLバー伸縮対策：100dvhが使えるならそれを優先 */
+    :root { --vh: 100vh; }
+    @supports (height: 100dvh) {
+      :root { --vh: 100dvh; }
+    }
+    html, body { width: 100%; height: 100%; }
+
     /* A-Frame（カメラ映像） */
     a-scene {
       position: fixed !important;
-      inset: 0;
+      left: 0; top: 0;
+      width: 100vw !important;
+      height: var(--vh) !important;
       z-index: 1;
+    }
+
+    /* A-Frameが作るWebGLキャンバスも強制的に全画面 */
+    .a-canvas, canvas.a-canvas {
+      width: 100vw !important;
+      height: var(--vh) !important;
+      display: block !important;
     }
 
     /* 雪（canvas）＝カメラ映像の上 */
@@ -29,9 +45,6 @@
       display: none;
     }
 
-
-
-
     /* フレーム（HTML画像）＝雪の上 */
     .frameLayer {
       position: fixed;
@@ -42,7 +55,7 @@
     }
     .frameLayer img{
       width: 100vw;
-      height: 100vh;
+      height: var(--vh);
       object-fit: cover;
       display: block;
     }
@@ -113,35 +126,6 @@
       display: none;
       white-space: pre-line; /* \n 改行 */
     }
-
-   html, body {
-  width: 100%;
-  height: 100%;
-}
-
-/* iPhone SafariのURLバー伸縮対策：100dvhが使えるならそれを優先 */
-:root { --vh: 100vh; }
-@supports (height: 100dvh) {
-  :root { --vh: 100dvh; }
-}
-
-a-scene {
-  position: fixed !important;
-  left: 0; top: 0;
-  width: 100vw !important;
-  height: var(--vh) !important;
-  z-index: 1;
-}
-
-/* A-Frameが作るWebGLキャンバスも強制的に全画面 */
-.a-canvas, canvas.a-canvas {
-  width: 100vw !important;
-  height: var(--vh) !important;
-  display: block !important;
-}
-
-
-
   </style>
 </head>
 
@@ -175,14 +159,12 @@ a-scene {
   <div id="wrongOverlay">虚無コアラは考え事をしているだけ</div>
 
   <!-- A-Frame / MindAR（追跡とカメラだけ担当） -->
-   <a-scene
-  id="scene"
-  mindar-image="imageTargetSrc: ./targets_v3.mind; warmupTolerance: 3; missTolerance: 8;"
-
-  vr-mode-ui="enabled: false"
-  renderer="colorManagement: true"
->
-
+  <a-scene
+    id="scene"
+    mindar-image="imageTargetSrc: ./targets.mind; warmupTolerance: 3; missTolerance: 8;"
+    vr-mode-ui="enabled: false"
+    renderer="colorManagement: true"
+  >
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
     <!-- 重要：targets.mind の登録順に合わせる -->
@@ -192,25 +174,30 @@ a-scene {
   </a-scene>
 
   <script>
+    // ---- iPhoneのURLバー伸縮で高さが変わる対策（100dvh未対応端末向け）----
+    function setVh() {
+      document.documentElement.style.setProperty("--vh", window.innerHeight + "px");
+    }
+    setVh();
+    window.addEventListener("resize", setVh, { passive: true });
+    window.addEventListener("orientationchange", setVh, { passive: true });
+
     const ui = document.getElementById("ui");
     const hint = document.getElementById("hint");
-    const sceneEl = document.getElementById("scene");
-
-    const targetCorrect = document.getElementById("targetCorrect");
-    const targetWrong = document.getElementById("targetWrong");
-
-    const snowCanvas = document.getElementById("snowCanvas");
-    const ctx = snowCanvas.getContext("2d");
-
+    const wrongOverlay = document.getElementById("wrongOverlay");
     const frameBackLayer = document.getElementById("frameBackLayer");
     const frameFrontLayer = document.getElementById("frameFrontLayer");
-    const wrongOverlay = document.getElementById("wrongOverlay");
+    const sceneEl = document.getElementById("scene");
+    const targetCorrect = document.getElementById("targetCorrect");
+    const targetWrong   = document.getElementById("targetWrong");
 
     // 画面下にログを出す（iPhoneで原因切り分け用）
     function logMsg(msg) {
       hint.style.display = "block";
       hint.textContent = msg;
     }
+
+    // iPhone Safariで「Script error.」になりやすいので、例外はここに集約
     window.addEventListener("error", (e) => {
       logMsg("エラー: " + (e.message || "不明"));
     });
@@ -219,43 +206,12 @@ a-scene {
       logMsg("起動失敗: " + m);
     });
 
-    // 状態管理
-    // idle -> まだ確定なし
-    // wrong -> 失敗表示中
-    // correct -> 正解表示中（ロック）
-    let state = "idle";
+    // ------------------------------
+    // 雪（Canvas）: 軽量パーティクル
+    // ------------------------------
+    const snowCanvas = document.getElementById("snowCanvas");
+    const ctx = snowCanvas.getContext("2d");
 
-    function showIdle() {
-      if (state === "correct") return; // 正解ロック
-      state = "idle";
-      wrongOverlay.style.display = "none";
-      frameBackLayer.style.display = "none";
-      frameFrontLayer.style.display = "none";
-      snowStop();
-      logMsg("カードを映してください");
-    }
-
-    function showWrong() {
-      if (state === "correct") return;
-      state = "wrong";
-      frameBackLayer.style.display = "none";
-      frameFrontLayer.style.display = "none";
-      snowStop();
-      wrongOverlay.style.display = "block";
-      wrongOverlay.textContent = "虚無コアラは考え事をしているだけ\nほんとはかまってほしいかも";
-      logMsg("別のカードも試してみて");
-    }
-
-    function showCorrect() {
-      state = "correct";
-      wrongOverlay.style.display = "none";
-      frameBackLayer.style.display = "block";
-      frameFrontLayer.style.display = "block";
-      snowStart();
-      logMsg("なみだコアラはさみしがりやで\nいじっぱり\nすなおじゃないけど\nほんとはいっしょにいたい");
-    }
-
-    // ===== 雪（Canvas）: 3層で奥行き =====
     let snowRunning = false;
     let rafId = null;
     let lastT = 0;
@@ -326,7 +282,6 @@ a-scene {
         ctx.fillStyle = `rgba(255,255,255,${L.alpha})`;
 
         for (const p of particles[i]) {
-          // 動き
           p.x += p.vx * dt;
           p.y += p.vy * dt;
 
@@ -343,7 +298,6 @@ a-scene {
           if (p.x < -20) p.x = w + 20;
           if (p.x > w + 20) p.x = -20;
 
-          // 描画（円）
           ctx.beginPath();
           ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
           ctx.fill();
@@ -357,16 +311,57 @@ a-scene {
       if (!snowRunning) return;
       resizeSnowCanvas();
       initParticles();
-    });
+    }, { passive: true });
 
-    // ===== START押下でカメラ開始 =====
+    // ------------------------------
+    // 表示状態（誤判定対策）
+    // ------------------------------
+    let locked = false; // 正解表示を一時固定（スクショ用）
+
+    function showIdle() {
+      if (locked) return;
+      wrongOverlay.style.display = "none";
+      frameBackLayer.style.display = "none";
+      frameFrontLayer.style.display = "none";
+      snowStop();
+      logMsg("カードを映してください");
+    }
+
+    function showWrong() {
+      locked = false; // 間違いが見えたら固定解除（誤判定対策）
+      frameBackLayer.style.display = "none";
+      frameFrontLayer.style.display = "none";
+      snowStop();
+      wrongOverlay.style.display = "block";
+      wrongOverlay.textContent = "虚無コアラは考え事をしているだけ\nほんとはかまってほしいかも";
+      logMsg("別のカードも試してみて");
+    }
+
+    function showCorrect({lock = true} = {}) {
+      wrongOverlay.style.display = "none";
+      frameBackLayer.style.display = "block";
+      frameFrontLayer.style.display = "block";
+      snowStart();
+      locked = !!lock;
+      logMsg("メリークリスマス（スクショで保存）");
+    }
+
+    // スクショが撮れたら、画面タップでロック解除できるようにする
+    document.addEventListener("click", () => {
+      if (!locked) return;
+      locked = false;
+      showIdle();
+    }, { passive: true });
+
+    // ------------------------------
+    // 起動（STARTボタン）: start() は1回だけ
+    // ------------------------------
     document.getElementById("startBtn").addEventListener("click", async () => {
       ui.style.display = "none";
       hint.style.display = "block";
       logMsg("初期化中…");
 
       try {
-        // sceneの読み込み完了を待つ（早押し対策）
         if (!sceneEl.hasLoaded) {
           await new Promise((res) => sceneEl.addEventListener("loaded", res, { once: true }));
         }
@@ -377,45 +372,92 @@ a-scene {
           return;
         }
 
+        await mindarSystem.start(); // ★ 1回だけ
 
-        // 追加：targetsの実体を確認（iPhoneで何を掴んでいるか可視化）
-const res = await fetch("./targets_202412xx.mind", { cache: "no-store" });
-const buf = await res.arrayBuffer();
-logMsg(`targets: ${res.status} / ${buf.byteLength} bytes`);
+        // iPhoneでキャンバスが半分になる/ずれる対策
+        window.dispatchEvent(new Event("resize"));
 
+        // 追加：一部環境で黒画面になるのを避けるための保険
+        if (sceneEl.sceneEl?.renderer && !sceneEl.__loopStarted) {
+          sceneEl.__loopStarted = true;
+          sceneEl.sceneEl.renderer.setAnimationLoop(() => {
+            sceneEl.sceneEl.render(sceneEl.sceneEl.object3D, sceneEl.sceneEl.camera);
+          });
+        }
 
-        await mindarSystem.start();
         logMsg("カードを映してください");
-
-        await mindarSystem.start();
-
-// 追加：iPhoneでキャンバスが半分になるのを防ぐ
-window.dispatchEvent(new Event("resize"));
-
-
-        // A-Frame描画ループ開始
-        sceneEl.sceneEl.renderer.setAnimationLoop(() => {
-          sceneEl.sceneEl.render(sceneEl.sceneEl.object3D, sceneEl.sceneEl.camera);
-        });
-
       } catch (err) {
         logMsg("起動失敗: " + (err?.message || String(err)));
       }
     });
 
-    // ===== マーカー分岐 =====
-    targetCorrect.addEventListener("targetFound", () => showCorrect());
-    targetWrong.addEventListener("targetFound", () => showWrong());
+    // ------------------------------
+    // マーカー分岐（誤判定を減らすための「安定判定」）
+    //
+    // 既存コードでは、正解を一瞬誤検出 → stateがcorrectに固定 → 以後は失敗を無視
+    // という状態になりやすい（showIdle/showWrongがreturnする）ため、
+    // 「一定時間連続で見えたら確定」+「失敗直後は正解にしない」を入れる。
+    // ------------------------------
+    const STABLE_CORRECT_MS = 900;
+    const STABLE_WRONG_MS   = 250;
+    const WRONG_COOLDOWN_MS = 1400;
 
+    let correctVisible = false;
+    let wrongVisible = false;
+    let correctSince = 0;
+    let wrongSince = 0;
+    let lastWrongAt = 0;
+
+    function nowMs() { return performance.now(); }
+
+    function updateDecision() {
+      const t = nowMs();
+      if (locked) return;
+
+      if (wrongVisible && (t - wrongSince) >= STABLE_WRONG_MS) {
+        showWrong();
+        return;
+      }
+
+      if (
+        correctVisible &&
+        (t - correctSince) >= STABLE_CORRECT_MS &&
+        (t - lastWrongAt)  >= WRONG_COOLDOWN_MS
+      ) {
+        showCorrect({lock: true});
+        return;
+      }
+
+      showIdle();
+    }
+
+    targetCorrect.addEventListener("targetFound", () => {
+      correctVisible = true;
+      if (!correctSince) correctSince = nowMs();
+      updateDecision();
+    });
     targetCorrect.addEventListener("targetLost", () => {
-      if (state === "correct") return; // 正解ロック
-      showIdle();
+      correctVisible = false;
+      correctSince = 0;
+      updateDecision();
     });
 
-    targetWrong.addEventListener("targetLost", () => {
-      if (state === "correct") return;
-      showIdle();
+    targetWrong.addEventListener("targetFound", () => {
+      wrongVisible = true;
+      const t = nowMs();
+      if (!wrongSince) wrongSince = t;
+      lastWrongAt = t;
+      if (locked) locked = false;
+      updateDecision();
     });
+    targetWrong.addEventListener("targetLost", () => {
+      wrongVisible = false;
+      wrongSince = 0;
+      updateDecision();
+    });
+
+    // 初期表示
+    showIdle();
   </script>
 </body>
 </html>
