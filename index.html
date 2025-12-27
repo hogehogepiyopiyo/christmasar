@@ -5,22 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Christmas AR</title>
 
-  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
-  <!-- MindAR (Image Tracking + A-Frame integration) -->
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
     body { margin: 0; overflow: hidden; background: #000; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif; }
 
-    /* iPhone SafariのURLバー伸縮対策：100dvhが使えるならそれを優先 */
     :root { --vh: 100vh; }
-    @supports (height: 100dvh) {
-      :root { --vh: 100dvh; }
-    }
+    @supports (height: 100dvh) { :root { --vh: 100dvh; } }
     html, body { width: 100%; height: 100%; }
 
-    /* A-Frame（カメラ映像） */
     a-scene {
       position: fixed !important;
       left: 0; top: 0;
@@ -28,15 +22,12 @@
       height: var(--vh) !important;
       z-index: 1;
     }
-
-    /* A-Frameが作るWebGLキャンバスも強制的に全画面 */
     .a-canvas, canvas.a-canvas {
       width: 100vw !important;
       height: var(--vh) !important;
       display: block !important;
     }
 
-    /* 雪（canvas）＝カメラ映像の上 */
     #snowCanvas {
       position: fixed;
       inset: 0;
@@ -45,7 +36,6 @@
       display: none;
     }
 
-    /* フレーム（HTML画像）＝雪の上 */
     .frameLayer {
       position: fixed;
       inset: 0;
@@ -62,7 +52,6 @@
     #frameBackLayer { opacity: 0.35; transform: scale(1.02); filter: blur(1px); }
     #frameFrontLayer { opacity: 0.95; }
 
-    /* 失敗時テキスト（フレームより上） */
     #wrongOverlay {
       position: fixed;
       left: 50%;
@@ -80,10 +69,9 @@
       pointer-events: none;
       max-width: min(92vw, 520px);
       text-align: center;
-      white-space: pre-line; /* \n 改行を反映 */
+      white-space: pre-line;
     }
 
-    /* START画面 */
     #ui {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -112,7 +100,6 @@
       font-weight: 900;
     }
 
-    /* 下のヒント表示 */
     #hint {
       position: fixed; left: 0; right: 0;
       bottom: env(safe-area-inset-bottom);
@@ -124,13 +111,12 @@
       pointer-events: none;
       z-index: 5;
       display: none;
-      white-space: pre-line; /* \n 改行 */
+      white-space: pre-line;
     }
   </style>
 </head>
 
 <body>
-  <!-- 導入UI -->
   <div id="ui">
     <div id="panel">
       <h1>ヒント</h1>
@@ -144,10 +130,8 @@
 
   <div id="hint">カードを映してください</div>
 
-  <!-- 雪（Canvas） -->
   <canvas id="snowCanvas"></canvas>
 
-  <!-- フレーム（HTML） -->
   <div id="frameBackLayer" class="frameLayer">
     <img src="./frame_back.png" alt="frame back">
   </div>
@@ -155,29 +139,25 @@
     <img src="./frame_front.png" alt="frame front">
   </div>
 
-  <!-- 失敗テキスト -->
   <div id="wrongOverlay">虚無コアラは考え事をしているだけ</div>
 
-  <!-- A-Frame / MindAR（追跡とカメラだけ担当） -->
   <a-scene
     id="scene"
-    mindar-image="imageTargetSrc: ./targets.mind; warmupTolerance: 3; missTolerance: 8;"
+    mindar-image="imageTargetSrc: ./targets.mind; warmupTolerance: 2; missTolerance: 12;"
     vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false"
     renderer="colorManagement: true"
   >
     <a-camera position="0 0 0" look-controls="enabled:false"></a-camera>
 
-    <!-- 重要：targets.mind の登録順に合わせる -->
-    <!-- 0 = 正解カード / 1 = 失敗カード（逆ならここを入れ替える） -->
+    <!-- 0=正解 / 1=失敗（逆なら入れ替え） -->
     <a-entity id="targetCorrect" mindar-image-target="targetIndex: 0"></a-entity>
     <a-entity id="targetWrong"   mindar-image-target="targetIndex: 1"></a-entity>
   </a-scene>
 
   <script>
-    // ---- iPhoneのURLバー伸縮で高さが変わる対策（100dvh未対応端末向け）----
-    function setVh() {
-      document.documentElement.style.setProperty("--vh", window.innerHeight + "px");
-    }
+    // ---- iPhoneのURLバー伸縮対策 ----
+    function setVh() { document.documentElement.style.setProperty("--vh", window.innerHeight + "px"); }
     setVh();
     window.addEventListener("resize", setVh, { passive: true });
     window.addEventListener("orientationchange", setVh, { passive: true });
@@ -191,23 +171,19 @@
     const targetCorrect = document.getElementById("targetCorrect");
     const targetWrong   = document.getElementById("targetWrong");
 
-    // 画面下にログを出す（iPhoneで原因切り分け用）
     function logMsg(msg) {
       hint.style.display = "block";
       hint.textContent = msg;
     }
 
-    // iPhone Safariで「Script error.」になりやすいので、例外はここに集約
-    window.addEventListener("error", (e) => {
-      logMsg("エラー: " + (e.message || "不明"));
-    });
+    window.addEventListener("error", (e) => logMsg("エラー: " + (e.message || "不明")));
     window.addEventListener("unhandledrejection", (e) => {
       const m = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
       logMsg("起動失敗: " + m);
     });
 
     // ------------------------------
-    // 雪（Canvas）: 軽量パーティクル
+    // 雪（Canvas）
     // ------------------------------
     const snowCanvas = document.getElementById("snowCanvas");
     const ctx = snowCanvas.getContext("2d");
@@ -217,9 +193,9 @@
     let lastT = 0;
 
     const layers = [
-      { count: 140, size: 1.2, speed: 40,  alpha: 0.30, drift: 10 }, // 遠
-      { count: 220, size: 1.6, speed: 70,  alpha: 0.50, drift: 18 }, // 中
-      { count: 320, size: 2.2, speed: 110, alpha: 0.75, drift: 26 }  // 近
+      { count: 140, size: 1.2, speed: 40,  alpha: 0.30, drift: 10 },
+      { count: 220, size: 1.6, speed: 70,  alpha: 0.50, drift: 18 },
+      { count: 320, size: 2.2, speed: 110, alpha: 0.75, drift: 26 }
     ];
     const particles = [[], [], []];
 
@@ -233,8 +209,7 @@
     }
 
     function initParticles() {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
+      const w = window.innerWidth, h = window.innerHeight;
       for (let i = 0; i < layers.length; i++) {
         particles[i] = [];
         for (let k = 0; k < layers[i].count; k++) {
@@ -269,32 +244,22 @@
 
     function tickSnow(t) {
       if (!snowRunning) return;
-      const dt = Math.min(0.05, (t - lastT) / 1000); // 最大50ms
+      const dt = Math.min(0.05, (t - lastT) / 1000);
       lastT = t;
 
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-
+      const w = window.innerWidth, h = window.innerHeight;
       ctx.clearRect(0, 0, w, h);
 
       for (let i = 0; i < layers.length; i++) {
         const L = layers[i];
         ctx.fillStyle = `rgba(255,255,255,${L.alpha})`;
-
         for (const p of particles[i]) {
           p.x += p.vx * dt;
           p.y += p.vy * dt;
-
-          // 風でゆらゆら
           p.vx += (Math.random() - 0.5) * 6 * dt;
           p.vx = Math.max(-L.drift, Math.min(L.drift, p.vx));
 
-          // 画面外へ出たら上に戻す
-          if (p.y > h + 10) {
-            p.y = -10;
-            p.x = Math.random() * w;
-            p.vx = (Math.random() - 0.5) * L.drift;
-          }
+          if (p.y > h + 10) { p.y = -10; p.x = Math.random() * w; p.vx = (Math.random() - 0.5) * L.drift; }
           if (p.x < -20) p.x = w + 20;
           if (p.x > w + 20) p.x = -20;
 
@@ -303,7 +268,6 @@
           ctx.fill();
         }
       }
-
       rafId = requestAnimationFrame(tickSnow);
     }
 
@@ -314,9 +278,9 @@
     }, { passive: true });
 
     // ------------------------------
-    // 表示状態（誤判定対策）
+    // 表示
     // ------------------------------
-    let locked = false; // 正解表示を一時固定（スクショ用）
+    let locked = false;
 
     function showIdle() {
       if (locked) return;
@@ -328,7 +292,7 @@
     }
 
     function showWrong() {
-      locked = false; // 間違いが見えたら固定解除（誤判定対策）
+      locked = false;
       frameBackLayer.style.display = "none";
       frameFrontLayer.style.display = "none";
       snowStop();
@@ -346,7 +310,6 @@
       logMsg("なみだコアラはさみしがりやで\nいじっぱり\nすなおじゃないけど\nほんとはいっしょにいたい");
     }
 
-    // スクショが撮れたら、画面タップでロック解除できるようにする
     document.addEventListener("click", () => {
       if (!locked) return;
       locked = false;
@@ -354,7 +317,8 @@
     }, { passive: true });
 
     // ------------------------------
-    // 起動（STARTボタン）: start() は1回だけ
+    // 起動（START）
+    // ★ここが今回の本命：targets.mindを必ず取り直す＆小さければ止める
     // ------------------------------
     document.getElementById("startBtn").addEventListener("click", async () => {
       ui.style.display = "none";
@@ -366,18 +330,35 @@
           await new Promise((res) => sceneEl.addEventListener("loaded", res, { once: true }));
         }
 
-        const mindarSystem = sceneEl.systems["mindar-image-system"];
-        if (!mindarSystem) {
-          logMsg("mindar-image-system が見つかりません（読み込み失敗）");
-          return;
+        // キャッシュ回避して targets を確認
+        const v = Date.now();
+        const targetSrc = `./targets.mind?v=${v}`;
+
+        // mindar-image属性も同じURLに合わせる（重要）
+        sceneEl.setAttribute("mindar-image", `imageTargetSrc: ${targetSrc}; warmupTolerance: 2; missTolerance: 12;`);
+
+        // 実体チェック：小さい場合はほぼHTML(404等)
+        const res = await fetch(targetSrc, { cache: "no-store" });
+        const buf = await res.arrayBuffer();
+        const type = res.headers.get("content-type") || "";
+        logMsg(`targets: ${res.status} / ${type} / ${buf.byteLength} bytes`);
+
+        if (!res.ok) {
+          throw new Error(`targets.mind の取得に失敗（HTTP ${res.status}）`);
+        }
+        if (buf.byteLength < 100000) {
+          throw new Error(`targets.mind が小さすぎます（${buf.byteLength} bytes）。404ページ等を読んでいる可能性が高いです。`);
         }
 
-        await mindarSystem.start(); // ★ 1回だけ
+        const mindarSystem = sceneEl.systems["mindar-image-system"];
+        if (!mindarSystem) throw new Error("mindar-image-system が見つかりません");
 
-        // iPhoneでキャンバスが半分になる/ずれる対策
+        await mindarSystem.start();
+
+        // iPhoneのレイアウト崩れ対策
         window.dispatchEvent(new Event("resize"));
 
-        // 追加：一部環境で黒画面になるのを避けるための保険
+        // 黒画面回避の保険
         if (sceneEl.sceneEl?.renderer && !sceneEl.__loopStarted) {
           sceneEl.__loopStarted = true;
           sceneEl.sceneEl.renderer.setAnimationLoop(() => {
@@ -392,23 +373,16 @@
     });
 
     // ------------------------------
-    // マーカー分岐（誤判定を減らすための「安定判定」）
-    //
-    // 既存コードでは、正解を一瞬誤検出 → stateがcorrectに固定 → 以後は失敗を無視
-    // という状態になりやすい（showIdle/showWrongがreturnする）ため、
-    // 「一定時間連続で見えたら確定」+「失敗直後は正解にしない」を入れる。
+    // 判定（誤判定を減らしつつ、認識しづらくしすぎない設定）
     // ------------------------------
-    const STABLE_CORRECT_MS = 900;
+    const STABLE_CORRECT_MS = 350;
     const STABLE_WRONG_MS   = 250;
-    const WRONG_COOLDOWN_MS = 1400;
+    const WRONG_COOLDOWN_MS = 500;
 
-    let correctVisible = false;
-    let wrongVisible = false;
-    let correctSince = 0;
-    let wrongSince = 0;
-    let lastWrongAt = 0;
+    let correctVisible = false, wrongVisible = false;
+    let correctSince = 0, wrongSince = 0, lastWrongAt = 0;
 
-    function nowMs() { return performance.now(); }
+    const nowMs = () => performance.now();
 
     function updateDecision() {
       const t = nowMs();
@@ -419,11 +393,9 @@
         return;
       }
 
-      if (
-        correctVisible &&
-        (t - correctSince) >= STABLE_CORRECT_MS &&
-        (t - lastWrongAt)  >= WRONG_COOLDOWN_MS
-      ) {
+      if (correctVisible &&
+          (t - correctSince) >= STABLE_CORRECT_MS &&
+          (t - lastWrongAt)  >= WRONG_COOLDOWN_MS) {
         showCorrect({lock: true});
         return;
       }
@@ -456,7 +428,6 @@
       updateDecision();
     });
 
-    // 初期表示
     showIdle();
   </script>
 </body>
