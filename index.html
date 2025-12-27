@@ -110,6 +110,35 @@
       display: none;
       white-space: pre-line; /* \n 改行 */
     }
+
+   html, body {
+  width: 100%;
+  height: 100%;
+}
+
+/* iPhone SafariのURLバー伸縮対策：100dvhが使えるならそれを優先 */
+:root { --vh: 100vh; }
+@supports (height: 100dvh) {
+  :root { --vh: 100dvh; }
+}
+
+a-scene {
+  position: fixed !important;
+  left: 0; top: 0;
+  width: 100vw !important;
+  height: var(--vh) !important;
+  z-index: 1;
+}
+
+/* A-Frameが作るWebGLキャンバスも強制的に全画面 */
+.a-canvas, canvas.a-canvas {
+  width: 100vw !important;
+  height: var(--vh) !important;
+  display: block !important;
+}
+
+
+
   </style>
 </head>
 
@@ -209,7 +238,7 @@
       frameFrontLayer.style.display = "none";
       snowStop();
       wrongOverlay.style.display = "block";
-      wrongOverlay.textContent = "虚無コアラは考え事をしているだけ";
+      wrongOverlay.textContent = "虚無コアラは考え事をしているだけ\nほんとはかまってほしいかも";
       logMsg("別のカードも試してみて");
     }
 
@@ -219,7 +248,7 @@
       frameBackLayer.style.display = "block";
       frameFrontLayer.style.display = "block";
       snowStart();
-      logMsg("メリークリスマス（スクショで保存）");
+      logMsg("なみだコアラはさみしがりやで\nいじっぱり\nすなおじゃないけど\nほんとはいっしょにいたい");
     }
 
     // ===== 雪（Canvas）: 3層で奥行き =====
@@ -346,6 +375,12 @@
 
         await mindarSystem.start();
         logMsg("カードを映してください");
+
+        await mindarSystem.start();
+
+// 追加：iPhoneでキャンバスが半分になるのを防ぐ
+window.dispatchEvent(new Event("resize"));
+
 
         // A-Frame描画ループ開始
         sceneEl.sceneEl.renderer.setAnimationLoop(() => {
