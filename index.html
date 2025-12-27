@@ -142,6 +142,22 @@
     const targetCorrect = document.getElementById("targetCorrect");
     const targetWrong = document.getElementById("targetWrong");
 
+
+    function logMsg(msg) {
+  hint.style.display = "block";
+  hint.textContent = msg;
+}
+
+// JSエラーを画面に出す
+window.addEventListener("error", (e) => {
+  logMsg("エラー: " + (e.message || "不明"));
+});
+window.addEventListener("unhandledrejection", (e) => {
+  const m = (e.reason && e.reason.message) ? e.reason.message : String(e.reason);
+  logMsg("起動失敗: " + m);
+});
+
+
     // 状態管理（誤検出でチラつかないようにする）
     // "idle" -> まだ何も確定してない
     // "wrong" -> 失敗表示中
@@ -172,17 +188,34 @@ function showCorrect() {
 }
 
     // START押してからカメラ開始
-    document.getElementById("startBtn").addEventListener("click", async () => {
-      ui.style.display = "none";
-      hint.style.display = "block";
+document.getElementById("startBtn").addEventListener("click", async () => {
+  ui.style.display = "none";
+  hint.style.display = "block";
+  logMsg("初期化中…");
 
-      const mindarSystem = sceneEl.systems["mindar-image-system"];
-      await mindarSystem.start();
+  try {
+    // sceneの読み込み完了を待つ（早押し対策）
+    if (!sceneEl.hasLoaded) {
+      await new Promise((res) => sceneEl.addEventListener("loaded", res, { once: true }));
+    }
 
-      sceneEl.sceneEl.renderer.setAnimationLoop(() => {
-        sceneEl.sceneEl.render(sceneEl.sceneEl.object3D, sceneEl.sceneEl.camera);
-      });
+    const mindarSystem = sceneEl.systems["mindar-image-system"];
+    if (!mindarSystem) {
+      logMsg("mindar-image-system が見つかりません（読み込み失敗）");
+      return;
+    }
+
+    await mindarSystem.start();  // ここで targets.mind を読んでからカメラ開始
+    logMsg("カメラ起動OK。カードを映してください");
+
+    sceneEl.sceneEl.renderer.setAnimationLoop(() => {
+      sceneEl.sceneEl.render(sceneEl.sceneEl.object3D, sceneEl.sceneEl.camera);
     });
+
+  } catch (err) {
+    logMsg("起動失敗: " + (err?.message || String(err)));
+  }
+});
 
     // 正解カードを見つけたら正解表示（ロック）
     targetCorrect.addEventListener("targetFound", () => {
