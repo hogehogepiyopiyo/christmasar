@@ -174,7 +174,8 @@ a-scene {
   <!-- A-Frame / MindAR（追跡とカメラだけ担当） -->
    <a-scene
   id="scene"
-  mindar-image="..."
+  mindar-image="imageTargetSrc: ./targets01.mind; warmupTolerance: 3; missTolerance: 8;"
+
   vr-mode-ui="enabled: false"
   renderer="colorManagement: true"
 >
@@ -372,6 +373,13 @@ a-scene {
           logMsg("mindar-image-system が見つかりません（読み込み失敗）");
           return;
         }
+
+
+        // 追加：targetsの実体を確認（iPhoneで何を掴んでいるか可視化）
+const res = await fetch("./targets_202412xx.mind", { cache: "no-store" });
+const buf = await res.arrayBuffer();
+logMsg(`targets: ${res.status} / ${buf.byteLength} bytes`);
+
 
         await mindarSystem.start();
         logMsg("カードを映してください");
