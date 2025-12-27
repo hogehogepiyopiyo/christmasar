@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Christmas AR</title>
 
+  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <!-- MindAR (Image Tracking + A-Frame integration) -->
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 
   <style>
@@ -15,6 +17,7 @@
     @supports (height: 100dvh) { :root { --vh: 100dvh; } }
     html, body { width: 100%; height: 100%; }
 
+    /* A-Frame（カメラ映像） */
     a-scene {
       position: fixed !important;
       left: 0; top: 0;
@@ -28,6 +31,7 @@
       display: block !important;
     }
 
+    /* 雪（canvas）＝カメラ映像の上 */
     #snowCanvas {
       position: fixed;
       inset: 0;
@@ -36,6 +40,7 @@
       display: none;
     }
 
+    /* フレーム（png） */
     .frameLayer {
       position: fixed;
       inset: 0;
@@ -43,7 +48,7 @@
       pointer-events: none;
       display: none;
     }
-    .frameLayer img{
+    .frameLayer img {
       width: 100vw;
       height: var(--vh);
       object-fit: cover;
@@ -52,6 +57,7 @@
     #frameBackLayer { opacity: 0.35; transform: scale(1.02); filter: blur(1px); }
     #frameFrontLayer { opacity: 0.95; }
 
+    /* 失敗テキスト */
     #wrongOverlay {
       position: fixed;
       left: 50%;
@@ -72,6 +78,7 @@
       white-space: pre-line;
     }
 
+    /* 初期UI */
     #ui {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -100,6 +107,7 @@
       font-weight: 900;
     }
 
+    /* 画面下メッセージ */
     #hint {
       position: fixed; left: 0; right: 0;
       bottom: env(safe-area-inset-bottom);
@@ -119,11 +127,11 @@
 <body>
   <div id="ui">
     <div id="panel">
-      <h1>ヒント</h1>
-      <p><b>見ておくべきカードを写して。</b></p>
+      <h1>みておくべきはどっち？</h1>
+      <p><b>HOW TO</b></p>
       <p>1) START を押す</p>
       <p>2) カメラを許可する</p>
-      <p>3) 2枚のカードのどちらかを映す</p>
+      <p>3) 2匹のコアラのどちらかを選んで映す</p>
       <button id="startBtn">START</button>
     </div>
   </div>
@@ -141,10 +149,10 @@
 
   <div id="wrongOverlay">虚無コアラは考え事をしているだけ</div>
 
+  <!-- A-Frame / MindAR -->
   <a-scene
     id="scene"
     mindar-image="imageTargetSrc: ./targets.mind; maxTrack: 2; warmupTolerance: 0; missTolerance: 30; filterMinCF: 0.00001; filterBeta: 0.0001;"
-
     vr-mode-ui="enabled: false"
     device-orientation-permission-ui="enabled: false"
     renderer="colorManagement: true"
@@ -183,9 +191,68 @@
       logMsg("起動失敗: " + m);
     });
 
-    // ------------------------------
-    // 雪（Canvas）
-    // ------------------------------
+    // ==========================
+    // 状態管理（ここが要件）
+    // ==========================
+    // idle    : まだ確定していない（スキャン中）
+    // correct : 正解確定（リロードまで固定）
+    // wrong   : 失敗確定（リロードまで固定）
+    let state = "idle";
+
+    // 「スキャン自体を止める」用（確定後はイベントを無視）
+    let scanActive = true;
+
+    function showIdle() {
+      if (state !== "idle") return; // ★正解/失敗どちらでも固定
+      wrongOverlay.style.display = "none";
+      frameBackLayer.style.display = "none";
+      frameFrontLayer.style.display = "none";
+      snowStop();
+      logMsg("カードを映してください");
+    }
+
+    function finalizeAndStopScan(result) {
+      if (state !== "idle") return; // 既に確定済み
+      state = result;
+      scanActive = false;
+
+      // 追跡処理を止めたいが、stop() はカメラまで止める可能性があるため、
+      // まずは「イベント無視」で確実に固定する。pause() があれば併用。
+      try {
+        const mindarSystem = sceneEl.systems["mindar-image-system"];
+        if (mindarSystem && typeof mindarSystem.pause === "function") {
+          mindarSystem.pause(); // 追跡停止（実装により存在しない場合もある）
+        }
+      } catch (_) {}
+    }
+
+    function showWrongAndLock() {
+      // ★失敗もリロードまで固定
+      finalizeAndStopScan("wrong");
+
+      frameBackLayer.style.display = "none";
+      frameFrontLayer.style.display = "none";
+      snowStop();
+
+      wrongOverlay.style.display = "block";
+      wrongOverlay.textContent = "虚無コアラは考え事をしているだけ\nほんとはかまってほしいかも";
+      logMsg("虚無コアラ判定（リロードでやり直し）");
+    }
+
+    function showCorrectAndLock() {
+      // ★正解もリロードまで固定
+      finalizeAndStopScan("correct");
+
+      wrongOverlay.style.display = "none";
+      frameBackLayer.style.display = "block";
+      frameFrontLayer.style.display = "block";
+      snowStart();
+      logMsg("なみだコアラはさみしがりやで\nいじっぱり\nすなおじゃないけど\nほんとはいっしょにいたい");
+    }
+
+    // ==========================
+    // 雪（Canvas）: 3層で奥行き
+    // ==========================
     const snowCanvas = document.getElementById("snowCanvas");
     const ctx = snowCanvas.getContext("2d");
 
@@ -198,7 +265,7 @@
       { count: 220, size: 1.6, speed: 70,  alpha: 0.50, drift: 18 },
       { count: 320, size: 2.2, speed: 110, alpha: 0.75, drift: 26 }
     ];
-    const particles = [[], [], []];
+    let particles = [[], [], []];
 
     function resizeSnowCanvas() {
       const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
@@ -211,8 +278,8 @@
 
     function initParticles() {
       const w = window.innerWidth, h = window.innerHeight;
+      particles = [[], [], []];
       for (let i = 0; i < layers.length; i++) {
-        particles[i] = [];
         for (let k = 0; k < layers[i].count; k++) {
           particles[i].push({
             x: Math.random() * w,
@@ -278,49 +345,9 @@
       initParticles();
     }, { passive: true });
 
-    // ------------------------------
-    // 表示
-    // ------------------------------
-    let locked = false;
-
-    function showIdle() {
-      if (locked) return;
-      wrongOverlay.style.display = "none";
-      frameBackLayer.style.display = "none";
-      frameFrontLayer.style.display = "none";
-      snowStop();
-      logMsg("カードを映してください");
-    }
-
-    function showWrong() {
-      locked = false;
-      frameBackLayer.style.display = "none";
-      frameFrontLayer.style.display = "none";
-      snowStop();
-      wrongOverlay.style.display = "block";
-      wrongOverlay.textContent = "虚無コアラは考え事をしているだけ\nほんとはかまってほしいかも";
-      logMsg("別のカードも試してみて");
-    }
-
-    function showCorrect({lock = true} = {}) {
-      wrongOverlay.style.display = "none";
-      frameBackLayer.style.display = "block";
-      frameFrontLayer.style.display = "block";
-      snowStart();
-      locked = !!lock;
-      logMsg("なみだコアラはさみしがりやで\nいじっぱり\nすなおじゃないけど\nほんとはいっしょにいたい");
-    }
-
-    document.addEventListener("click", () => {
-      if (!locked) return;
-      locked = false;
-      showIdle();
-    }, { passive: true });
-
-    // ------------------------------
-    // 起動（START）
-    // ★ここが今回の本命：targets.mindを必ず取り直す＆小さければ止める
-    // ------------------------------
+    // ==========================
+    // START（起動）
+    // ==========================
     document.getElementById("startBtn").addEventListener("click", async () => {
       ui.style.display = "none";
       hint.style.display = "block";
@@ -331,36 +358,20 @@
           await new Promise((res) => sceneEl.addEventListener("loaded", res, { once: true }));
         }
 
-        // キャッシュ回避して targets を確認
-        const v = Date.now();
-        const targetSrc = `./targets.mind?v=${v}`;
-
-        // mindar-image属性も同じURLに合わせる（重要）
-        sceneEl.setAttribute("mindar-image", `imageTargetSrc: ${targetSrc}; warmupTolerance: 2; missTolerance: 12;`);
-
-        // 実体チェック：小さい場合はほぼHTML(404等)
-        const res = await fetch(targetSrc, { cache: "no-store" });
-        const buf = await res.arrayBuffer();
-        const type = res.headers.get("content-type") || "";
-        logMsg(`targets: ${res.status} / ${type} / ${buf.byteLength} bytes`);
-
-        if (!res.ok) {
-          throw new Error(`targets.mind の取得に失敗（HTTP ${res.status}）`);
-        }
-        if (buf.byteLength < 100000) {
-          throw new Error(`targets.mind が小さすぎます（${buf.byteLength} bytes）。404ページ等を読んでいる可能性が高いです。`);
-        }
-
         const mindarSystem = sceneEl.systems["mindar-image-system"];
-        if (!mindarSystem) throw new Error("mindar-image-system が見つかりません");
+        if (!mindarSystem) {
+          logMsg("mindar-image-system が見つかりません（読み込み失敗）");
+          return;
+        }
 
+        // 1回だけ start（ダブルstartしない）
         await mindarSystem.start();
 
-        // iPhoneのレイアウト崩れ対策
+        // iPhoneでキャンバスが半分になるのを防ぐ
         window.dispatchEvent(new Event("resize"));
 
-        // 黒画面回避の保険
-        if (sceneEl.sceneEl?.renderer && !sceneEl.__loopStarted) {
+        // A-Frame描画ループ開始（保険）
+        if (!sceneEl.__loopStarted && sceneEl.sceneEl?.renderer) {
           sceneEl.__loopStarted = true;
           sceneEl.sceneEl.renderer.setAnimationLoop(() => {
             sceneEl.sceneEl.render(sceneEl.sceneEl.object3D, sceneEl.sceneEl.camera);
@@ -373,62 +384,72 @@
       }
     });
 
-    // ------------------------------
-    // 判定（誤判定を減らしつつ、認識しづらくしすぎない設定）
-    // ------------------------------
-    const STABLE_CORRECT_MS = 350;
-    const STABLE_WRONG_MS   = 250;
-    const WRONG_COOLDOWN_MS = 500;
+    // ==========================
+    // 判定：短い安定判定 → 確定したら固定
+    // ==========================
+    const STABLE_MS = 200; // 200ms連続で見えたら確定（反応を軽めに）
 
-    let correctVisible = false, wrongVisible = false;
-    let correctSince = 0, wrongSince = 0, lastWrongAt = 0;
+    let correctVisible = false;
+    let wrongVisible = false;
+    let correctTimer = null;
+    let wrongTimer = null;
 
-    const nowMs = () => performance.now();
+    function clearTimers() {
+      if (correctTimer) { clearTimeout(correctTimer); correctTimer = null; }
+      if (wrongTimer)   { clearTimeout(wrongTimer);   wrongTimer = null; }
+    }
 
-    function updateDecision() {
-      const t = nowMs();
-      if (locked) return;
+    function scheduleFinalizeCorrect() {
+      if (state !== "idle" || !scanActive) return;
+      if (correctTimer) return;
+      correctTimer = setTimeout(() => {
+        correctTimer = null;
+        if (!scanActive || state !== "idle") return;
+        if (correctVisible) {
+          clearTimers();
+          showCorrectAndLock();
+        }
+      }, STABLE_MS);
+    }
 
-      if (wrongVisible && (t - wrongSince) >= STABLE_WRONG_MS) {
-        showWrong();
-        return;
-      }
-
-      if (correctVisible &&
-          (t - correctSince) >= STABLE_CORRECT_MS &&
-          (t - lastWrongAt)  >= WRONG_COOLDOWN_MS) {
-        showCorrect({lock: true});
-        return;
-      }
-
-      showIdle();
+    function scheduleFinalizeWrong() {
+      if (state !== "idle" || !scanActive) return;
+      if (wrongTimer) return;
+      wrongTimer = setTimeout(() => {
+        wrongTimer = null;
+        if (!scanActive || state !== "idle") return;
+        if (wrongVisible) {
+          clearTimers();
+          showWrongAndLock();
+        }
+      }, STABLE_MS);
     }
 
     targetCorrect.addEventListener("targetFound", () => {
+      if (!scanActive || state !== "idle") return;
       correctVisible = true;
-      if (!correctSince) correctSince = nowMs();
-      updateDecision();
+      scheduleFinalizeCorrect();
     });
+
     targetCorrect.addEventListener("targetLost", () => {
       correctVisible = false;
-      correctSince = 0;
-      updateDecision();
+      if (correctTimer) { clearTimeout(correctTimer); correctTimer = null; }
+      showIdle();
     });
 
     targetWrong.addEventListener("targetFound", () => {
+      if (!scanActive || state !== "idle") return;
       wrongVisible = true;
-      const t = nowMs();
-      if (!wrongSince) wrongSince = t;
-      lastWrongAt = t;
-      if (locked) locked = false;
-      updateDecision();
-    });
-    targetWrong.addEventListener("targetLost", () => {
-      wrongVisible = false;
-      wrongSince = 0;
-      updateDecision();
+      scheduleFinalizeWrong();
     });
 
+    targetWrong.addEventListener("targetLost", () => {
+      wrongVisible = false;
+      if (wrongTimer) { clearTimeout(wrongTimer); wrongTimer = null; }
+      showIdle();
+    });
+
+    // 初期表示
     showIdle();
   </script>
 </body>
